@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { width: 300px; font-family: 'Helvetica Neue', sans-serif; padding: 15px; margin: 0; }
+        h3 { margin: 0 0 10px 0; color: #0b79bf; }
+        .stat-box { background: #f4f4f4; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+        .label { font-size: 12px; color: #666; }
+        .value { font-size: 18px; font-weight: bold; color: #333; }
+        .verdict { text-align: center; padding: 10px; color: white; border-radius: 5px; font-weight: bold; margin-top: 15px;}
+        .good { background-color: #4CAF50; } /* Green */
+        .bad { background-color: #F44336; }  /* Red */
+        .normal { background-color: #2196F3; } /* Blue */
+    </style>
+</head>
+<body>
+    <h3>Takealot Tracker</h3>
+    
+    <div id="loading">Scanning page...</div>
+
+    <div id="content" style="display: none;">
+        <div class="stat-box">
+            <div class="label">Current Price</div>
+            <div class="value" id="price">R ---</div>
+        </div>
+        
+        <div class="stat-box">
+            <div class="label">30-Day Average</div>
+            <div class="value" id="average">R ---</div>
+        </div>
+
+        <div id="verdict-box" class="verdict normal">Checking...</div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
