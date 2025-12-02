@@ -1,4 +1,5 @@
-import sqlite3
+import os
+import psycopg2
 import datetime
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -6,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# --- CONFIGURATION ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,89 +14,100 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- DATABASE SETUP ---
+# --- DATABASE CONNECTION ---
+# Get the secret password we just saved in Render
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
+
 def init_db():
-    conn = sqlite3.connect("prices.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS price_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            price INTEGER,
-            url TEXT,
-            timestamp DATETIME
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS price_history (
+                id SERIAL PRIMARY KEY,
+                title TEXT,
+                price INTEGER,
+                url TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ Connected to Neon PostgreSQL!")
+    except Exception as e:
+        print(f"❌ Database Error: {e}")
 
-init_db()
+# Run setup
+if DATABASE_URL:
+    init_db()
 
-# --- DATA MODEL ---
 class Product(BaseModel):
     title: str
     price: int
     url: str
 
-# --- HELPER FUNCTION (This was missing!) ---
 def clean_url(url: str):
-    """Removes tracking parameters (everything after ?) from URL"""
     return url.split('?')[0]
 
-# --- ENDPOINT 1: TRACK PRICE ---
 @app.post("/track")
 async def track_price(product: Product):
-    # Only track valid product pages
     if "PLID" not in product.url and "plid" not in product.url:
         return {"status": "ignored"}
 
     clean_title = product.title.split('|')[0].strip()
-    
-    # Use the helper to clean the URL before saving
     final_url = clean_url(product.url)
-    
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.datetime.now()
 
-    conn = sqlite3.connect("prices.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO price_history (title, price, url, timestamp)
-        VALUES (?, ?, ?, ?)
-    """, (clean_title, product.price, final_url, now))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO price_history (title, price, url, timestamp)
+            VALUES (%s, %s, %s, %s)
+        """, (clean_title, product.price, final_url, now))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
 
-    print(f"💾 SAVED: R{product.price} for {clean_title}")
-    return {"status": "saved"}
+        print(f"💾 SAVED TO NEON: R{product.price} for {clean_title}")
+        return {"status": "saved"}
+    except Exception as e:
+        print(f"Error saving: {e}")
+        return {"status": "error"}
 
-# --- ENDPOINT 2: GET HISTORY & GRAPH DATA ---
 @app.get("/check_history")
 async def check_history(url: str):
-    conn = sqlite3.connect("prices.db")
-    cursor = conn.cursor()
-    
-    # Use the helper to clean the incoming URL so it matches the DB
-    search_url = clean_url(url)
-    
-    # Get timestamp AND price for the graph
-    cursor.execute("SELECT timestamp, price FROM price_history WHERE url = ? ORDER BY timestamp ASC", (search_url,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        search_url = clean_url(url)
+        
+        cursor.execute("SELECT timestamp, price FROM price_history WHERE url = %s ORDER BY timestamp ASC", (search_url,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
 
-    if not rows:
-        return {"status": "no_history", "average": 0}
+        if not rows:
+            return {"status": "no_history", "average": 0}
 
-    # Prepare data for the graph (X axis = Date, Y axis = Price)
-    history_data = [{"date": row[0], "price": row[1]} for row in rows]
-    
-    # Calculate stats
-    prices = [row[1] for row in rows]
-    average_price = sum(prices) / len(prices)
-    
-    return {
-        "status": "found",
-        "average": int(average_price),
-        "lowest": int(min(prices)),
-        "highest": int(max(prices)),
-        "history": history_data 
-    }
+        # Convert Postgres timestamp to string
+        history_data = [{"date": str(row[0]), "price": row[1]} for row in rows]
+        prices = [row[1] for row in rows]
+        average_price = sum(prices) / len(prices)
+        
+        return {
+            "status": "found",
+            "average": int(average_price),
+            "lowest": int(min(prices)),
+            "highest": int(max(prices)),
+            "history": history_data 
+        }
+    except Exception as e:
+        print(f"Error reading: {e}")
+        return {"status": "error"}
