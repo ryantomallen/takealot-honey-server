@@ -5,7 +5,8 @@
   "permissions": ["scripting"],
   "host_permissions": [
     "*://*.takealot.com/*",
-    "https://takealot-honey-server.onrender.com/*"
+    "https://takealot-honey-server.onrender.com/*",
+    "*://*.amazon.co.za/*"
   ],
   "action": {
     "default_popup": "popup.html",
