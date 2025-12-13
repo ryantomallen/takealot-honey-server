@@ -67,7 +67,7 @@ function checkAmazon(searchTerm, takealotPrice) {
                 const priceElement = doc.querySelector('.a-price-whole');
                 
                 if (priceElement) {
-                    let amazonPriceRaw = priceElement.innerText.replace(/[.,\n]/g, '');
+                    let amazonPriceRaw = priceElement.innerText.replace(/[^\d]/g, '');
                     let amazonPrice = parseInt(amazonPriceRaw);
 
                     console.log(`📦 Price Found: R${amazonPrice}`);
