@@ -1,32 +1,26 @@
-console.log("🚀 AMAZON ARBITRAGE: URL MODE");
+console.log("🚀 AMAZON SEARCH AGENT LOADED");
 
 let lastScannedUrl = "";
 
-// --- 1. THE SEARCH GENERATOR (The Fix) ---
-function generateSearchQueryFromURL() {
-    // Get the path: "/the-ordinary-glycolic-acid-100ml/PLID12345"
+// --- 1. GET THE SEARCH TERM ---
+// We use the Takealot URL slug because it's usually cleaner than the Title
+// Example: takealot.com/samsung-55-inch-tv/PLID... -> "samsung 55 inch tv"
+function getSearchTerm() {
     const path = window.location.pathname; 
-    
-    // Split by slash and get the product name part (usually index 1)
     const segments = path.split('/').filter(s => s.length > 0);
     
-    // Safety check: Ensure we are actually on a product page (usually has 'PLID' at the end)
-    const hasPLID = segments.some(s => s.startsWith("PLID") || s.startsWith("plid"));
+    // Safety: Ensure we are on a product page
+    const hasPLID = segments.some(s => s.toLowerCase().startsWith("plid"));
     if (!hasPLID || segments.length < 2) return null;
 
-    // The product slug is usually the one BEFORE the PLID
-    // e.g. [ "samsung-tv-55", "PLID123" ]
-    let slug = segments[0]; 
-
-    // Convert "samsung-tv-55" to "samsung tv 55"
-    let cleanQuery = slug.replace(/-/g, " ");
-
-    // Extra cleanup: Remove specific keywords that confuse Amazon
-    // Amazon doesn't like "ml" or "pack" sometimes, but usually keeping it simple is best.
-    return cleanQuery;
+    // The product name is usually the part before the PLID
+    let rawSlug = segments[0]; 
+    
+    // Clean it: "samsung-tv-55" -> "samsung tv 55"
+    return rawSlug.replace(/-/g, " ");
 }
 
-// --- 2. THE UI INJECTOR (Standard) ---
+// --- 2. THE UI INJECTOR ---
 function showAmazonButton(amazonPrice, savings, url) {
     if (document.getElementById("amazon-deal-btn")) return;
 
@@ -36,36 +30,40 @@ function showAmazonButton(amazonPrice, savings, url) {
 
         const btn = document.createElement("a");
         btn.id = "amazon-deal-btn";
-        btn.href = `${url}&tag=YOUR_TAG-21`; // <--- REMEMBER TO PUT YOUR TAG HERE LATER
+        btn.href = `${url}&tag=YOUR_TAG-21`; // <--- Add your Affiliate Tag here later
         btn.target = "_blank";
+        
+        // Button Styling
         btn.style.display = "block";
         btn.style.marginTop = "15px";
         btn.style.padding = "12px";
-        btn.style.background = "linear-gradient(to bottom, #f0c14b, #f7dfa5)";
+        btn.style.background = "#FF9900"; // Amazon Orange
         btn.style.color = "#111";
         btn.style.fontWeight = "bold";
         btn.style.textAlign = "center";
-        btn.style.borderRadius = "4px";
+        btn.style.borderRadius = "5px";
         btn.style.textDecoration = "none";
-        btn.style.border = "1px solid #a88734";
-        btn.style.boxShadow = "0 1px 0 rgba(255,255,255,0.4) inset";
+        btn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
         
+        // Text inside the button
         btn.innerHTML = `
             <div style="font-size: 14px;">Found on Amazon</div>
-            <div style="font-size: 18px; color: #B12704;">R ${amazonPrice}</div>
-            <div style="font-size: 12px; color: green;">You Save R ${savings}!</div>
+            <div style="font-size: 20px; font-weight: 800;">R ${amazonPrice}</div>
+            <div style="font-size: 12px; opacity: 0.9;">(Save R${savings})</div>
         `;
 
         container.appendChild(btn);
     }
 }
 
-// --- 3. THE AMAZON HUNTER ---
-async function checkAmazonPrice(searchQuery, takealotPrice) {
-    if (!searchQuery) return;
+// --- 3. THE "FIRST RESULT" HUNTER ---
+async function checkAmazon(searchTerm, takealotPrice) {
+    if (!searchTerm) return;
     
-    console.log(`🕵️ Hunting on Amazon for: "${searchQuery}"`);
-    const searchUrl = `https://www.amazon.co.za/s?k=${encodeURIComponent(searchQuery)}`;
+    console.log(`🕵️ Searching Amazon for: "${searchTerm}"`);
+    
+    // This matches the URL structure you provided:
+    const searchUrl = `https://www.amazon.co.za/s?k=${encodeURIComponent(searchTerm)}`;
 
     try {
         const response = await fetch(searchUrl);
@@ -73,29 +71,26 @@ async function checkAmazonPrice(searchQuery, takealotPrice) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(htmlText, "text/html");
 
-        // Amazon Price Selector
+        // STRATEGY: Grab the FIRST price we find in the results
+        // This relies on Amazon showing the most relevant result at the top
         const priceElement = doc.querySelector('.a-price-whole');
         
         if (priceElement) {
+            // Clean the price string (remove commas/dots)
             let amazonPriceRaw = priceElement.innerText.replace(/[.,\n]/g, '');
             let amazonPrice = parseInt(amazonPriceRaw);
 
-            console.log(`📦 Found: R${amazonPrice}`);
+            console.log(`📦 First Result Price: R${amazonPrice}`);
 
-            // Safety Check: Ignore if price is less than 30% of Takealot (preventing accessory matches)
-            // Example: TV is R10,000. Found Remote for R200. 200 < 3000 -> Ignore.
-            if (amazonPrice < (takealotPrice * 0.30)) {
-                console.log("⚠️ Ignored: Price too low (likely an accessory).");
-                return; 
-            }
-
+            // Only show if it's actually cheaper
             if (amazonPrice < takealotPrice) {
                 const savings = takealotPrice - amazonPrice;
                 showAmazonButton(amazonPrice, savings, searchUrl);
-                
-                // Optional: Send to your Render server logic if you want to track stats again later
-                // chrome.runtime.sendMessage({ ... });
+            } else {
+                console.log("📉 Amazon was more expensive (or same price).");
             }
+        } else {
+            console.log("❌ No price found in Amazon search results.");
         }
     } catch (err) {
         console.error("Amazon check failed:", err);
@@ -104,25 +99,26 @@ async function checkAmazonPrice(searchQuery, takealotPrice) {
 
 // --- 4. THE TRIGGER ---
 function checkPage() {
-    // Only run if the URL changed (SPA navigation)
+    // Only run if URL changed
     if (window.location.href === lastScannedUrl) return;
 
     const priceSpan = document.querySelector('span[class*="currency-module_currency"]');
     
     if (priceSpan) {
+        // Get Takealot Price
         const rawText = priceSpan.innerText;
         const cleanPriceString = rawText.replace(/[^\d]/g, '');
-        const priceInt = parseInt(cleanPriceString);
+        const takealotPrice = parseInt(cleanPriceString);
 
-        if (!isNaN(priceInt)) {
-            // NEW: Use URL instead of Title
-            const smartQuery = generateSearchQueryFromURL();
-            checkAmazonPrice(smartQuery, priceInt);
-            
-            lastScannedUrl = window.location.href;
+        if (!isNaN(takealotPrice)) {
+            const searchTerm = getSearchTerm();
+            if (searchTerm) {
+                checkAmazon(searchTerm, takealotPrice);
+                lastScannedUrl = window.location.href;
+            }
         }
     }
 }
 
-// Check every 1 second to catch page changes quickly
+// Check every 1 second
 setInterval(checkPage, 1000);
