@@ -1,22 +1,16 @@
-console.log("🚀 AMAZON SEARCH AGENT LOADED");
+console.log("🚀 AMAZON SEARCH AGENT: PROXY MODE");
 
 let lastScannedUrl = "";
 
 // --- 1. GET THE SEARCH TERM ---
-// We use the Takealot URL slug because it's usually cleaner than the Title
-// Example: takealot.com/samsung-55-inch-tv/PLID... -> "samsung 55 inch tv"
 function getSearchTerm() {
     const path = window.location.pathname; 
     const segments = path.split('/').filter(s => s.length > 0);
     
-    // Safety: Ensure we are on a product page
     const hasPLID = segments.some(s => s.toLowerCase().startsWith("plid"));
     if (!hasPLID || segments.length < 2) return null;
 
-    // The product name is usually the part before the PLID
     let rawSlug = segments[0]; 
-    
-    // Clean it: "samsung-tv-55" -> "samsung tv 55"
     return rawSlug.replace(/-/g, " ");
 }
 
@@ -30,14 +24,13 @@ function showAmazonButton(amazonPrice, savings, url) {
 
         const btn = document.createElement("a");
         btn.id = "amazon-deal-btn";
-        btn.href = `${url}&tag=YOUR_TAG-21`; // <--- Add your Affiliate Tag here later
+        btn.href = `${url}&tag=YOUR_TAG-21`; 
         btn.target = "_blank";
         
-        // Button Styling
         btn.style.display = "block";
         btn.style.marginTop = "15px";
         btn.style.padding = "12px";
-        btn.style.background = "#FF9900"; // Amazon Orange
+        btn.style.background = "#FF9900"; 
         btn.style.color = "#111";
         btn.style.fontWeight = "bold";
         btn.style.textAlign = "center";
@@ -45,7 +38,6 @@ function showAmazonButton(amazonPrice, savings, url) {
         btn.style.textDecoration = "none";
         btn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
         
-        // Text inside the button
         btn.innerHTML = `
             <div style="font-size: 14px;">Found on Amazon</div>
             <div style="font-size: 20px; font-weight: 800;">R ${amazonPrice}</div>
@@ -56,56 +48,64 @@ function showAmazonButton(amazonPrice, savings, url) {
     }
 }
 
-// --- 3. THE "FIRST RESULT" HUNTER ---
-async function checkAmazon(searchTerm, takealotPrice) {
+// --- 3. THE HUNTER (Updated to use Background Proxy) ---
+function checkAmazon(searchTerm, takealotPrice) {
     if (!searchTerm) return;
     
-    console.log(`🕵️ Searching Amazon for: "${searchTerm}"`);
+    console.log(`🕵️ Asking Background to search: "${searchTerm}"`);
     
-    // This matches the URL structure you provided:
-    const searchUrl = `https://www.amazon.co.za/s?k=${encodeURIComponent(searchTerm)}`;
+    // SEND MESSAGE TO BACKGROUND SCRIPT
+    chrome.runtime.sendMessage(
+        { type: "CHECK_AMAZON_PRICE", searchTerm: searchTerm },
+        (response) => {
+            if (response && response.success) {
+                // We got the HTML back! Now we parse it here.
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.html, "text/html");
 
-    try {
-        const response = await fetch(searchUrl);
-        const htmlText = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlText, "text/html");
+                // Grab the first price
+                const priceElement = doc.querySelector('.a-price-whole');
+                
+                if (priceElement) {
+                    let amazonPriceRaw = priceElement.innerText.replace(/[.,\n]/g, '');
+                    let amazonPrice = parseInt(amazonPriceRaw);
 
-        // STRATEGY: Grab the FIRST price we find in the results
-        // This relies on Amazon showing the most relevant result at the top
-        const priceElement = doc.querySelector('.a-price-whole');
-        
-        if (priceElement) {
-            // Clean the price string (remove commas/dots)
-            let amazonPriceRaw = priceElement.innerText.replace(/[.,\n]/g, '');
-            let amazonPrice = parseInt(amazonPriceRaw);
+                    console.log(`📦 Price Found: R${amazonPrice}`);
 
-            console.log(`📦 First Result Price: R${amazonPrice}`);
-
-            // Only show if it's actually cheaper
-            if (amazonPrice < takealotPrice) {
-                const savings = takealotPrice - amazonPrice;
-                showAmazonButton(amazonPrice, savings, searchUrl);
+                    if (amazonPrice < takealotPrice) {
+                        const savings = takealotPrice - amazonPrice;
+                        showAmazonButton(amazonPrice, savings, response.url);
+                        
+                        // Log the win
+                        chrome.runtime.sendMessage({
+                            type: "ARBITRAGE_FOUND",
+                            payload: { 
+                                title: searchTerm, 
+                                takealot_price: takealotPrice,
+                                amazon_price: amazonPrice,
+                                savings: savings
+                            }
+                        });
+                    } else {
+                        console.log("📉 Amazon is not cheaper.");
+                    }
+                } else {
+                    console.log("❌ No price element found in Amazon HTML.");
+                }
             } else {
-                console.log("📉 Amazon was more expensive (or same price).");
+                console.error("Background search failed:", response ? response.error : "Unknown error");
             }
-        } else {
-            console.log("❌ No price found in Amazon search results.");
         }
-    } catch (err) {
-        console.error("Amazon check failed:", err);
-    }
+    );
 }
 
 // --- 4. THE TRIGGER ---
 function checkPage() {
-    // Only run if URL changed
     if (window.location.href === lastScannedUrl) return;
 
     const priceSpan = document.querySelector('span[class*="currency-module_currency"]');
     
     if (priceSpan) {
-        // Get Takealot Price
         const rawText = priceSpan.innerText;
         const cleanPriceString = rawText.replace(/[^\d]/g, '');
         const takealotPrice = parseInt(cleanPriceString);
@@ -120,5 +120,4 @@ function checkPage() {
     }
 }
 
-// Check every 1 second
 setInterval(checkPage, 1000);
