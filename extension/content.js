@@ -1,82 +1,120 @@
-console.log("🚀 AMAZON SEARCH AGENT: PROXY MODE");
+console.log("🚀 AMAZON SEARCH AGENT: FLOATING WIDGET MODE");
 
 let lastScannedUrl = "";
 
 // --- 1. GET THE SEARCH TERM ---
+// Extracts "samsung 55 inch tv" from the Takealot URL
 function getSearchTerm() {
     const path = window.location.pathname; 
     const segments = path.split('/').filter(s => s.length > 0);
     
+    // Safety: Ensure we are on a product page (must have PLID)
     const hasPLID = segments.some(s => s.toLowerCase().startsWith("plid"));
     if (!hasPLID || segments.length < 2) return null;
 
+    // The product name is usually the part before the PLID
     let rawSlug = segments[0]; 
     return rawSlug.replace(/-/g, " ");
 }
 
-// --- 2. THE UI INJECTOR ---
+// --- 2. THE UI INJECTOR (Floating Card) ---
 function showAmazonButton(amazonPrice, savings, url) {
+    // Prevent duplicates
     if (document.getElementById("amazon-deal-btn")) return;
 
-    const priceSpan = document.querySelector('span[class*="currency-module_currency"]');
-    if (priceSpan) {
-        const container = priceSpan.closest('div').parentNode;
+    // Create the floating container
+    const btn = document.createElement("a");
+    btn.id = "amazon-deal-btn";
+    btn.href = `${url}&tag=YOUR_TAG-21`; // <--- REMEMBER TO ADD YOUR AFFILIATE TAG
+    btn.target = "_blank";
+    
+    // Style it to float on top (Honey Style)
+    Object.assign(btn.style, {
+        position: "fixed",
+        top: "140px",         // Below the header
+        right: "20px",        // Stuck to the right side
+        zIndex: "2147483647", // Max Z-Index to stay on top
+        backgroundColor: "white",
+        border: "2px solid #FF9900", // Amazon Orange border
+        borderRadius: "8px",
+        boxShadow: "0 4px 15px rgba(0,0,0,0.3)", // Nice drop shadow
+        padding: "0",
+        textDecoration: "none",
+        fontFamily: "Arial, sans-serif",
+        width: "240px",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        cursor: "pointer",
+        transition: "transform 0.2s", // Smooth hover effect
+        animation: "slideIn 0.5s ease-out" // Entrance animation
+    });
 
-        const btn = document.createElement("a");
-        btn.id = "amazon-deal-btn";
-        btn.href = `${url}&tag=YOUR_TAG-21`; 
-        btn.target = "_blank";
-        
-        btn.style.display = "block";
-        btn.style.marginTop = "15px";
-        btn.style.padding = "12px";
-        btn.style.background = "#FF9900"; 
-        btn.style.color = "#111";
-        btn.style.fontWeight = "bold";
-        btn.style.textAlign = "center";
-        btn.style.borderRadius = "5px";
-        btn.style.textDecoration = "none";
-        btn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
-        
-        btn.innerHTML = `
-            <div style="font-size: 14px;">Found on Amazon</div>
-            <div style="font-size: 20px; font-weight: 800;">R ${amazonPrice}</div>
-            <div style="font-size: 12px; opacity: 0.9;">(Save R${savings})</div>
-        `;
+    // Hover effect
+    btn.onmouseover = () => { btn.style.transform = "scale(1.05)"; };
+    btn.onmouseout = () => { btn.style.transform = "scale(1.0)"; };
 
-        container.appendChild(btn);
-    }
+    // The Content
+    btn.innerHTML = `
+        <div style="background: #FF9900; color: #111; padding: 12px; font-weight: bold; text-align: center; font-size: 16px;">
+            🔥 Cheaper on Amazon
+        </div>
+        <div style="padding: 15px; color: #333; text-align: center; background: white;">
+            <div style="font-size: 13px; margin-bottom: 5px; color: #555;">Found for:</div>
+            <div style="font-size: 26px; font-weight: 800; color: #B12704; margin-bottom: 5px;">R ${amazonPrice}</div>
+            <div style="font-size: 14px; color: #007600; font-weight: bold; background: #e6f4ea; padding: 4px; border-radius: 4px;">
+                You Save R ${savings}!
+            </div>
+        </div>
+        <div style="background: #f8f8f8; padding: 10px; text-align: center; font-size: 12px; color: #555; border-top: 1px solid #eee;">
+            Click to view deal ➜
+        </div>
+    `;
+
+    // Add the slide-in animation
+    const style = document.createElement('style');
+    style.innerHTML = `
+        @keyframes slideIn {
+            from { transform: translateX(300px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Inject into body
+    document.body.appendChild(btn);
 }
 
-// --- 3. THE HUNTER (Updated to use Background Proxy) ---
+// --- 3. THE HUNTER (Proxy Mode) ---
 function checkAmazon(searchTerm, takealotPrice) {
     if (!searchTerm) return;
     
     console.log(`🕵️ Asking Background to search: "${searchTerm}"`);
     
-    // SEND MESSAGE TO BACKGROUND SCRIPT
+    // Send message to background.js to bypass CORS
     chrome.runtime.sendMessage(
         { type: "CHECK_AMAZON_PRICE", searchTerm: searchTerm },
         (response) => {
             if (response && response.success) {
-                // We got the HTML back! Now we parse it here.
+                // We got HTML back, now parse it
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(response.html, "text/html");
 
-                // Grab the first price
+                // Find the first price
                 const priceElement = doc.querySelector('.a-price-whole');
                 
                 if (priceElement) {
+                    // FIX: Remove all non-digits (spaces, commas, 'R')
                     let amazonPriceRaw = priceElement.innerText.replace(/[^\d]/g, '');
                     let amazonPrice = parseInt(amazonPriceRaw);
 
-                    console.log(`📦 Price Found: R${amazonPrice}`);
+                    console.log(`📦 Price Found: R${amazonPrice} (Raw: "${priceElement.innerText}")`);
 
                     if (amazonPrice < takealotPrice) {
                         const savings = takealotPrice - amazonPrice;
                         showAmazonButton(amazonPrice, savings, response.url);
                         
-                        // Log the win
+                        // Log the win to your server
                         chrome.runtime.sendMessage({
                             type: "ARBITRAGE_FOUND",
                             payload: { 
@@ -101,12 +139,15 @@ function checkAmazon(searchTerm, takealotPrice) {
 
 // --- 4. THE TRIGGER ---
 function checkPage() {
+    // Only run if URL changed
     if (window.location.href === lastScannedUrl) return;
 
+    // Find Takealot price
     const priceSpan = document.querySelector('span[class*="currency-module_currency"]');
     
     if (priceSpan) {
         const rawText = priceSpan.innerText;
+        // Clean Takealot price
         const cleanPriceString = rawText.replace(/[^\d]/g, '');
         const takealotPrice = parseInt(cleanPriceString);
 
@@ -120,4 +161,5 @@ function checkPage() {
     }
 }
 
+// Check every 1 second
 setInterval(checkPage, 1000);
