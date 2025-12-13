@@ -1,28 +1,32 @@
-console.log("🚀 AMAZON ARBITRAGE LOADED");
-
-const API_BASE = "https://takealot-honey-api.onrender.com"; 
+console.log("🚀 AMAZON ARBITRAGE: URL MODE");
 
 let lastScannedUrl = "";
 
-// --- 1. INTELLIGENT SEARCH GENERATOR ---
-function generateSearchQuery(rawTitle) {
-    // Step 1: Cut off extra info usually found after punctuation
-    // Example: "Samsung TV | 4K | Smart" -> "Samsung TV"
-    let clean = rawTitle.split(/[|\-(]/)[0];
+// --- 1. THE SEARCH GENERATOR (The Fix) ---
+function generateSearchQueryFromURL() {
+    // Get the path: "/the-ordinary-glycolic-acid-100ml/PLID12345"
+    const path = window.location.pathname; 
+    
+    // Split by slash and get the product name part (usually index 1)
+    const segments = path.split('/').filter(s => s.length > 0);
+    
+    // Safety check: Ensure we are actually on a product page (usually has 'PLID' at the end)
+    const hasPLID = segments.some(s => s.startsWith("PLID") || s.startsWith("plid"));
+    if (!hasPLID || segments.length < 2) return null;
 
-    // Step 2: Remove special characters and extra spaces
-    clean = clean.replace(/[^a-zA-Z0-9\s]/g, "").trim();
+    // The product slug is usually the one BEFORE the PLID
+    // e.g. [ "samsung-tv-55", "PLID123" ]
+    let slug = segments[0]; 
 
-    // Step 3: Limit to first 5 words (Amazon search works best with short queries)
-    // Example: "Samsung 55 Inch Crystal UHD 4K Smart TV" -> "Samsung 55 Inch Crystal UHD"
-    const words = clean.split(/\s+/);
-    if (words.length > 5) {
-        return words.slice(0, 5).join(" ");
-    }
-    return words.join(" ");
+    // Convert "samsung-tv-55" to "samsung tv 55"
+    let cleanQuery = slug.replace(/-/g, " ");
+
+    // Extra cleanup: Remove specific keywords that confuse Amazon
+    // Amazon doesn't like "ml" or "pack" sometimes, but usually keeping it simple is best.
+    return cleanQuery;
 }
 
-// --- 2. THE UI INJECTOR ---
+// --- 2. THE UI INJECTOR (Standard) ---
 function showAmazonButton(amazonPrice, savings, url) {
     if (document.getElementById("amazon-deal-btn")) return;
 
@@ -32,7 +36,7 @@ function showAmazonButton(amazonPrice, savings, url) {
 
         const btn = document.createElement("a");
         btn.id = "amazon-deal-btn";
-        btn.href = `${url}&tag=YOUR_TAG-21`; // Remember to put your real tag here
+        btn.href = `${url}&tag=YOUR_TAG-21`; // <--- REMEMBER TO PUT YOUR TAG HERE LATER
         btn.target = "_blank";
         btn.style.display = "block";
         btn.style.marginTop = "15px";
@@ -43,9 +47,7 @@ function showAmazonButton(amazonPrice, savings, url) {
         btn.style.textAlign = "center";
         btn.style.borderRadius = "4px";
         btn.style.textDecoration = "none";
-        btn.style.borderColor = "#a88734 #9c7e31 #846a29";
-        btn.style.borderStyle = "solid";
-        btn.style.borderWidth = "1px";
+        btn.style.border = "1px solid #a88734";
         btn.style.boxShadow = "0 1px 0 rgba(255,255,255,0.4) inset";
         
         btn.innerHTML = `
@@ -59,11 +61,10 @@ function showAmazonButton(amazonPrice, savings, url) {
 }
 
 // --- 3. THE AMAZON HUNTER ---
-async function checkAmazonPrice(rawTitle, takealotPrice) {
-    // USE THE NEW SMART SEARCH
-    const searchQuery = generateSearchQuery(rawTitle);
+async function checkAmazonPrice(searchQuery, takealotPrice) {
+    if (!searchQuery) return;
+    
     console.log(`🕵️ Hunting on Amazon for: "${searchQuery}"`);
-
     const searchUrl = `https://www.amazon.co.za/s?k=${encodeURIComponent(searchQuery)}`;
 
     try {
@@ -72,39 +73,29 @@ async function checkAmazonPrice(rawTitle, takealotPrice) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(htmlText, "text/html");
 
-        // Find the first price in results
+        // Amazon Price Selector
         const priceElement = doc.querySelector('.a-price-whole');
         
         if (priceElement) {
             let amazonPriceRaw = priceElement.innerText.replace(/[.,\n]/g, '');
             let amazonPrice = parseInt(amazonPriceRaw);
 
-            console.log(`📦 Found potential match: R${amazonPrice}`);
+            console.log(`📦 Found: R${amazonPrice}`);
 
-            // Safety Check: Is the price "too good to be true"?
-            // If Amazon price is less than 10% of Takealot price, it's probably an accessory (wrong item).
-            if (amazonPrice < (takealotPrice * 0.10)) {
-                console.log("⚠️ Ignored: Price too low, likely a mismatched accessory.");
+            // Safety Check: Ignore if price is less than 30% of Takealot (preventing accessory matches)
+            // Example: TV is R10,000. Found Remote for R200. 200 < 3000 -> Ignore.
+            if (amazonPrice < (takealotPrice * 0.30)) {
+                console.log("⚠️ Ignored: Price too low (likely an accessory).");
                 return; 
             }
 
             if (amazonPrice < takealotPrice) {
                 const savings = takealotPrice - amazonPrice;
                 showAmazonButton(amazonPrice, savings, searchUrl);
-
-                // Log to Cloud
-                chrome.runtime.sendMessage({
-                    type: "ARBITRAGE_FOUND",
-                    payload: { 
-                        title: searchQuery, 
-                        takealot_price: takealotPrice,
-                        amazon_price: amazonPrice,
-                        savings: savings
-                    }
-                });
+                
+                // Optional: Send to your Render server logic if you want to track stats again later
+                // chrome.runtime.sendMessage({ ... });
             }
-        } else {
-            console.log("❌ No price found on Amazon search page.");
         }
     } catch (err) {
         console.error("Amazon check failed:", err);
@@ -113,19 +104,25 @@ async function checkAmazonPrice(rawTitle, takealotPrice) {
 
 // --- 4. THE TRIGGER ---
 function checkPage() {
-    const priceSpan = document.querySelector('span[class*="currency-module_currency"]');
+    // Only run if the URL changed (SPA navigation)
+    if (window.location.href === lastScannedUrl) return;
 
-    if (priceSpan && window.location.href !== lastScannedUrl) {
+    const priceSpan = document.querySelector('span[class*="currency-module_currency"]');
+    
+    if (priceSpan) {
         const rawText = priceSpan.innerText;
         const cleanPriceString = rawText.replace(/[^\d]/g, '');
         const priceInt = parseInt(cleanPriceString);
-        const title = document.title;
 
         if (!isNaN(priceInt)) {
-            checkAmazonPrice(title, priceInt);
+            // NEW: Use URL instead of Title
+            const smartQuery = generateSearchQueryFromURL();
+            checkAmazonPrice(smartQuery, priceInt);
+            
             lastScannedUrl = window.location.href;
         }
     }
 }
 
-setInterval(checkPage, 2000);
+// Check every 1 second to catch page changes quickly
+setInterval(checkPage, 1000);
