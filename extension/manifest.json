@@ -1,29 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Takealot Price Tracker",
-  "version": "2.0",
-  "permissions": ["scripting"],
-  "host_permissions": [
-    "*://*.takealot.com/*",
-    "https://takealot-honey-server.onrender.com/*",
-    "*://*.amazon.co.za/*"
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-        "16": "icon.png",
-        "48": "icon.png",
-        "128": "icon.png"
-    }
-  },
-  "background": {
-    "service_worker": "background.js"
-  },
+  "name": "Takealot to Amazon Comparator",
+  "version": "1.0",
+  "description": "Checks Amazon prices when viewing Takealot products.",
+  "permissions": ["activeTab"],
   "content_scripts": [
     {
-      "matches": ["*://*.takealot.com/*"],
-      "js": ["chart.js", "content.js"],
-      "run_at": "document_idle"
+      "matches": ["*://*.takealot.com/*/PLID*"],
+      "js": ["content.js"],
+      "css": ["style.css"]
     }
-  ]
+  ],
+  "action": {
+    "default_icon": "icon.png"
+  }
 }
