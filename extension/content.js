@@ -1,4 +1,4 @@
-console.log("🇿🇦 AMAZON ZA AGENT: ACTIVE");
+console.log("🇿🇦 AMAZON ZA AGENT: ACTIVE WITH CLOSE BUTTON");
 
 let lastScannedUrl = "";
 const AFFILIATE_TAG = "rian0ea-20"; // <--- MAKE SURE THIS IS YOUR ZA TAG
@@ -17,16 +17,18 @@ function getSearchTerm() {
 
 // --- 2. THE UI INJECTOR ---
 function showAmazonButton(amazonPrice, savings, url) {
+    // Prevent duplicates
     if (document.getElementById("amazon-deal-btn")) return;
 
     const btn = document.createElement("a");
     btn.id = "amazon-deal-btn";
     
-    // CHANGED: Ensure URL uses the correct separator for the tag
+    // Ensure URL uses the correct separator for the tag
     const separator = url.includes("?") ? "&" : "?";
     btn.href = `${url}${separator}tag=${AFFILIATE_TAG}`; 
     btn.target = "_blank";
     
+    // Main container styles
     Object.assign(btn.style, {
         position: "fixed",
         top: "140px",
@@ -48,12 +50,15 @@ function showAmazonButton(amazonPrice, savings, url) {
         animation: "slideIn 0.5s ease-out"
     });
 
+    // Hover effect for the main container
     btn.onmouseover = () => { btn.style.transform = "scale(1.05)"; };
     btn.onmouseout = () => { btn.style.transform = "scale(1.0)"; };
 
+    // The Content HTML
     btn.innerHTML = `
-        <div style="background: #FF9900; color: #111; padding: 12px; font-weight: bold; text-align: center; font-size: 16px;">
-            🇿🇦 Cheaper on Amazon
+        <div style="background: #FF9900; color: #111; padding: 12px; font-weight: bold; text-align: center; font-size: 16px; position: relative;">
+            🔥 Cheaper on Amazon
+            <span id="amazon-close-btn" style="position: absolute; top: 0; right: 0; cursor: pointer; font-size: 24px; line-height: 1; color: #111; padding: 8px 12px; font-weight: normal;">&times;</span>
         </div>
         <div style="padding: 15px; color: #333; text-align: center; background: white;">
             <div style="font-size: 13px; margin-bottom: 5px; color: #555;">Found for:</div>
@@ -67,11 +72,28 @@ function showAmazonButton(amazonPrice, savings, url) {
         </div>
     `;
 
+    // Add animation styles
     const style = document.createElement('style');
     style.innerHTML = `@keyframes slideIn { from { transform: translateX(300px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`;
     document.head.appendChild(style);
 
+    // Inject into body
     document.body.appendChild(btn);
+
+    // --- CLOSE BUTTON LOGIC ---
+    const closeBtn = document.getElementById('amazon-close-btn');
+    closeBtn.addEventListener('click', (e) => {
+        // Stop the click from opening the Amazon link
+        e.preventDefault(); 
+        e.stopPropagation(); 
+        // Remove the popup
+        btn.remove();
+        console.log("❌ Amazon popup closed by user.");
+    });
+    
+    // Add a separate hover effect just for the close button
+    closeBtn.onmouseover = () => { closeBtn.style.color = "#fff"; closeBtn.style.backgroundColor = "rgba(0,0,0,0.1)"; };
+    closeBtn.onmouseout = () => { closeBtn.style.color = "#111"; closeBtn.style.backgroundColor = "transparent"; };
 }
 
 // --- 3. THE HUNTER ---
@@ -87,11 +109,9 @@ function checkAmazon(searchTerm, takealotPrice) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(response.html, "text/html");
 
-                // Amazon ZA uses the same class names as US
                 const priceElement = doc.querySelector('.a-price-whole');
                 
                 if (priceElement) {
-                    // Remove 'R', commas, and spaces to get a clean number
                     let amazonPriceRaw = priceElement.innerText.replace(/[^\d]/g, '');
                     let amazonPrice = parseInt(amazonPriceRaw);
 
