@@ -1,41 +1,21 @@
-// background.js
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type === "CHECK_AMAZON_PRICE") {
+        
+        const searchTerm = request.searchTerm;
+        // Construct the search URL
+        const searchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(searchTerm)}`;
 
-// YOUR RENDER URL (Keep this for the logging feature)
-const API_BASE = "https://takealot-honey-api.onrender.com";
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-
-    // --- 1. NEW: PROXY THE AMAZON SEARCH ---
-    if (message.type === "CHECK_AMAZON_PRICE") {
-        const searchUrl = `https://www.amazon.co.za/s?k=${encodeURIComponent(message.searchTerm)}`;
-
+        // Perform the fetch (Background scripts can bypass some CORS issues)
         fetch(searchUrl)
-            .then(response => response.text()) // Get raw HTML
+            .then(response => response.text()) // Get the HTML text
             .then(html => {
                 sendResponse({ success: true, html: html, url: searchUrl });
             })
             .catch(error => {
-                console.error("Background Fetch Error:", error);
+                console.error("Fetch error:", error);
                 sendResponse({ success: false, error: error.message });
             });
-        
-        return true; // Keep the message channel open for the async response
-    }
 
-    // --- 2. EXISTING: SERVER LOGGING ---
-    if (message.type === "PRICE_DATA") {
-        fetch(`${API_BASE}/track`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(message.payload)
-        }).catch(err => console.log("Track Error:", err));
-    }
-
-    if (message.type === "ARBITRAGE_FOUND") {
-        fetch(`${API_BASE}/log_arbitrage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(message.payload)
-        }).catch(err => console.log("Log Error:", err));
+        return true; // IMPORTANT: This tells Chrome to keep the channel open for the async fetch
     }
 });

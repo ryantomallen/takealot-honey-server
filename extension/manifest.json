@@ -2,8 +2,11 @@
   "manifest_version": 3,
   "name": "Takealot to Amazon Comparator",
   "version": "1.0",
-  "description": "Checks Amazon prices when viewing Takealot products.",
-  "permissions": ["activeTab"],
+  "permissions": ["activeTab", "scripting"], 
+  "host_permissions": ["https://www.amazon.com/*"], 
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["*://*.takealot.com/*/PLID*"],
