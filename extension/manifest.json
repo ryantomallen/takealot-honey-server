@@ -7,8 +7,7 @@
   "content_scripts": [
     {
       "matches": ["*://*.takealot.com/*/PLID*"],
-      "js": ["content.js"],
-      "css": ["style.css"]
+      "js": ["content.js"]
     }
   ],
   "action": {
