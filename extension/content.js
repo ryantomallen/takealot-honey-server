@@ -1,49 +1,41 @@
-console.log("🚀 AMAZON SEARCH AGENT: FLOATING WIDGET MODE");
+console.log("🇿🇦 AMAZON ZA AGENT: ACTIVE");
 
 let lastScannedUrl = "";
-const AFFILIATE_TAG = "rian0ea-20"; // <--- Your Tag is defined here
+const AFFILIATE_TAG = "rian0ea-20"; // <--- MAKE SURE THIS IS YOUR ZA TAG
 
 // --- 1. GET THE SEARCH TERM ---
-// Extracts "samsung 55 inch tv" from the Takealot URL
 function getSearchTerm() {
     const path = window.location.pathname; 
     const segments = path.split('/').filter(s => s.length > 0);
     
-    // Safety: Ensure we are on a product page (must have PLID)
     const hasPLID = segments.some(s => s.toLowerCase().startsWith("plid"));
     if (!hasPLID || segments.length < 2) return null;
 
-    // The product name is usually the part before the PLID
     let rawSlug = segments[0]; 
     return rawSlug.replace(/-/g, " ");
 }
 
-// --- 2. THE UI INJECTOR (Floating Card) ---
+// --- 2. THE UI INJECTOR ---
 function showAmazonButton(amazonPrice, savings, url) {
-    // Prevent duplicates
     if (document.getElementById("amazon-deal-btn")) return;
 
-    // Create the floating container
     const btn = document.createElement("a");
     btn.id = "amazon-deal-btn";
     
-    // --- FIX: ADDING THE COMMISSION TAG CORRECTLY ---
-    // We check if the URL already has a '?' to know how to add the tag
+    // CHANGED: Ensure URL uses the correct separator for the tag
     const separator = url.includes("?") ? "&" : "?";
     btn.href = `${url}${separator}tag=${AFFILIATE_TAG}`; 
-    
     btn.target = "_blank";
     
-    // Style it to float on top (Honey Style)
     Object.assign(btn.style, {
         position: "fixed",
-        top: "140px",        // Below the header
-        right: "20px",       // Stuck to the right side
-        zIndex: "2147483647", // Max Z-Index to stay on top
+        top: "140px",
+        right: "20px",
+        zIndex: "2147483647",
         backgroundColor: "white",
-        border: "2px solid #FF9900", // Amazon Orange border
+        border: "2px solid #FF9900",
         borderRadius: "8px",
-        boxShadow: "0 4px 15px rgba(0,0,0,0.3)", // Nice drop shadow
+        boxShadow: "0 4px 15px rgba(0,0,0,0.3)",
         padding: "0",
         textDecoration: "none",
         fontFamily: "Arial, sans-serif",
@@ -52,18 +44,16 @@ function showAmazonButton(amazonPrice, savings, url) {
         display: "flex",
         flexDirection: "column",
         cursor: "pointer",
-        transition: "transform 0.2s", // Smooth hover effect
-        animation: "slideIn 0.5s ease-out" // Entrance animation
+        transition: "transform 0.2s",
+        animation: "slideIn 0.5s ease-out"
     });
 
-    // Hover effect
     btn.onmouseover = () => { btn.style.transform = "scale(1.05)"; };
     btn.onmouseout = () => { btn.style.transform = "scale(1.0)"; };
 
-    // The Content
     btn.innerHTML = `
         <div style="background: #FF9900; color: #111; padding: 12px; font-weight: bold; text-align: center; font-size: 16px;">
-            🔥 Cheaper on Amazon
+            🇿🇦 Cheaper on Amazon
         </div>
         <div style="padding: 15px; color: #333; text-align: center; background: white;">
             <div style="font-size: 13px; margin-bottom: 5px; color: #555;">Found for:</div>
@@ -77,67 +67,47 @@ function showAmazonButton(amazonPrice, savings, url) {
         </div>
     `;
 
-    // Add the slide-in animation
     const style = document.createElement('style');
-    style.innerHTML = `
-        @keyframes slideIn {
-            from { transform: translateX(300px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-    `;
+    style.innerHTML = `@keyframes slideIn { from { transform: translateX(300px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`;
     document.head.appendChild(style);
 
-    // Inject into body
     document.body.appendChild(btn);
 }
 
-// --- 3. THE HUNTER (Proxy Mode) ---
+// --- 3. THE HUNTER ---
 function checkAmazon(searchTerm, takealotPrice) {
     if (!searchTerm) return;
     
-    console.log(`🕵️ Asking Background to search: "${searchTerm}"`);
+    console.log(`🕵️ Searching Amazon.co.za for: "${searchTerm}"`);
     
-    // Send message to background.js to bypass CORS
     chrome.runtime.sendMessage(
         { type: "CHECK_AMAZON_PRICE", searchTerm: searchTerm },
         (response) => {
             if (response && response.success) {
-                // We got HTML back, now parse it
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(response.html, "text/html");
 
-                // Find the first price
+                // Amazon ZA uses the same class names as US
                 const priceElement = doc.querySelector('.a-price-whole');
                 
                 if (priceElement) {
-                    // FIX: Remove all non-digits (spaces, commas, 'R')
+                    // Remove 'R', commas, and spaces to get a clean number
                     let amazonPriceRaw = priceElement.innerText.replace(/[^\d]/g, '');
                     let amazonPrice = parseInt(amazonPriceRaw);
 
-                    console.log(`📦 Price Found: R${amazonPrice} (Raw: "${priceElement.innerText}")`);
+                    console.log(`📦 Amazon Price: R${amazonPrice}`);
 
                     if (amazonPrice < takealotPrice) {
                         const savings = takealotPrice - amazonPrice;
                         showAmazonButton(amazonPrice, savings, response.url);
-                        
-                        // Log the win to your server
-                        chrome.runtime.sendMessage({
-                            type: "ARBITRAGE_FOUND",
-                            payload: { 
-                                title: searchTerm, 
-                                takealot_price: takealotPrice,
-                                amazon_price: amazonPrice,
-                                savings: savings
-                            }
-                        });
                     } else {
-                        console.log("📉 Amazon is not cheaper.");
+                        console.log("📉 Takealot is cheaper or same price.");
                     }
                 } else {
-                    console.log("❌ No price element found in Amazon HTML.");
+                    console.log("❌ Product found, but no price listed on Amazon.");
                 }
             } else {
-                console.error("Background search failed:", response ? response.error : "Unknown error");
+                console.error("Background search failed.");
             }
         }
     );
@@ -145,7 +115,6 @@ function checkAmazon(searchTerm, takealotPrice) {
 
 // --- 4. THE TRIGGER ---
 function checkPage() {
-    // Only run if URL changed
     if (window.location.href === lastScannedUrl) return;
 
     // Find Takealot price
@@ -153,7 +122,6 @@ function checkPage() {
     
     if (priceSpan) {
         const rawText = priceSpan.innerText;
-        // Clean Takealot price
         const cleanPriceString = rawText.replace(/[^\d]/g, '');
         const takealotPrice = parseInt(cleanPriceString);
 
@@ -167,5 +135,4 @@ function checkPage() {
     }
 }
 
-// Check every 1 second
 setInterval(checkPage, 1000);

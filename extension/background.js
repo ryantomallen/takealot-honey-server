@@ -2,12 +2,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === "CHECK_AMAZON_PRICE") {
         
         const searchTerm = request.searchTerm;
-        // Construct the search URL
-        const searchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(searchTerm)}`;
+        // CHANGED: Now searching Amazon South Africa
+        const searchUrl = `https://www.amazon.co.za/s?k=${encodeURIComponent(searchTerm)}`;
 
-        // Perform the fetch (Background scripts can bypass some CORS issues)
         fetch(searchUrl)
-            .then(response => response.text()) // Get the HTML text
+            .then(response => response.text())
             .then(html => {
                 sendResponse({ success: true, html: html, url: searchUrl });
             })
@@ -16,6 +15,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ success: false, error: error.message });
             });
 
-        return true; // IMPORTANT: This tells Chrome to keep the channel open for the async fetch
+        return true; 
     }
 });
